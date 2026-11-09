@@ -1,0 +1,14 @@
+# Secrets - never commit
+*.token
+node-token
+kubeconfig*
+*.kubeconfig
+secrets/
+.env
+*.key
+*.pem
+# Ansible
+*.retry
+ansible/.facts/
+# Local reports
+reports/

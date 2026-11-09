@@ -1,0 +1,6 @@
+# Network interface k3s binds to. wlan0 now; change to eth0 after cabling.
+k3s_iface: wlan0
+lan_cidr: 10.0.0.0/24
+
+# Pinned k3s version (one minor behind stable, to practise upgrades).
+k3s_version: v1.36.6+k3s1

@@ -1,0 +1,41 @@
+# Phase 0: read-only preflight. Changes nothing on the nodes.
+- name: Preflight report
+  hosts: k3s_servers
+  gather_facts: true
+  become: false
+  tasks:
+    - name: Collect read-only checks
+      ansible.builtin.shell: |
+        echo "model=$(tr -d '\0' </proc/device-tree/model)"
+        echo "os=$(lsb_release -ds)"
+        echo "kernel=$(uname -r)"
+        echo "arch=$(uname -m)"
+        echo "cpus=$(nproc)"
+        echo "mem=$(free -h | awk '/Mem:/{print $2}')"
+        echo "root_dev=$(findmnt -no SOURCE /)"
+        echo "disks=$(lsblk -dno NAME,TRAN,SIZE | grep -vE '^(loop|ram|zram)' | tr '\n' ';')"
+        echo "root_free=$(df -h / | awk 'NR==2{print $4" free of "$2}')"
+        echo "default_route=$(ip route show default | head -1)"
+        echo "time_sync=$(timedatectl show -p NTPSynchronized --value) ntp_service=$(timedatectl show -p NTP --value) tz=$(timedatectl show -p Timezone --value)"
+        echo "timesyncd=$(systemctl is-active systemd-timesyncd) chrony=$(systemctl is-active chrony 2>/dev/null)"
+        echo "swap=$(swapon --show --noheadings | wc -l) devices, total $(free -h | awk '/Swap:/{print $2}')"
+        echo "ufw=$(systemctl is-active ufw 2>/dev/null) firewalld=$(systemctl is-active firewalld 2>/dev/null)"
+        echo "cgroup_fs=$(stat -fc %T /sys/fs/cgroup)"
+        echo "cgroup_controllers=$(cat /sys/fs/cgroup/cgroup.controllers)"
+        echo "cmdline_cgroup=$(tr ' ' '\n' </proc/cmdline | grep -i cgroup | tr '\n' ' ')"
+        echo "wifi_powersave=$( [ -x /usr/sbin/iw ] && /usr/sbin/iw dev wlan0 get power_save | awk '{print $3}' || echo 'unknown (iw not installed)')"
+        echo "cloud_init_disabled=$( [ -e /etc/cloud/cloud-init.disabled ] && echo yes || echo no)"
+        echo "ssh_password_auth=$(sudo -n sshd -T 2>/dev/null | awk '/^passwordauthentication/{print $2}' | grep . || echo 'unknown (needs sudo)')"
+        echo "pending_upgrades=$(apt list --upgradable 2>/dev/null | grep -c upgradable)"
+        echo "reboot_required=$( [ -e /var/run/reboot-required ] && echo yes || echo no)"
+        echo "vxlan_module=$(modinfo -n vxlan >/dev/null 2>&1 && echo present || echo MISSING)"
+        echo "sudo_nopasswd=$(sudo -n true 2>/dev/null && echo yes || echo no)"
+        echo "eeprom_boot_order=$(rpi-eeprom-config 2>/dev/null | grep -o 'BOOT_ORDER=.*' || echo unknown)"
+      args:
+        executable: /bin/bash
+      register: preflight
+      changed_when: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ preflight.stdout_lines }}"
