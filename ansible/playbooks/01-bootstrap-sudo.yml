@@ -1,0 +1,16 @@
+# One-time bootstrap: grant passwordless sudo to the Ansible user.
+# Run interactively (asks for the sudo password):
+#   ansible-playbook playbooks/01-bootstrap-sudo.yml -K --limit pi1
+# The base role keeps this file managed afterwards.
+- name: Bootstrap passwordless sudo
+  hosts: k3s_servers
+  become: true
+  tasks:
+    - name: Sudoers drop-in for the Ansible user
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-pi-cluster-ansible
+        content: "{{ ansible_user | default('pts') }} ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: visudo -cf %s

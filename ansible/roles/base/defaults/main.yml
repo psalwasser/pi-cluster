@@ -1,0 +1,21 @@
+base_timezone: America/Chicago
+base_admin_user: pts
+base_packages:
+  - chrony
+  - iw
+  - unattended-upgrades
+  - curl
+  - jq
+# Packages unattended-upgrades must never touch (kernel is patched manually, one node at a time).
+base_unattended_blacklist:
+  - "linux-"
+# Firewall: only managed if ufw is already active (we never enable it).
+base_ufw_node_ports:
+  - { port: "6443", proto: tcp }       # Kubernetes API
+  - { port: "2379:2380", proto: tcp }  # etcd client/peer
+  - { port: "10250", proto: tcp }      # kubelet
+  - { port: "8472", proto: udp }       # flannel VXLAN
+# k3s pod and service networks (k3s docs: required when ufw is on).
+base_ufw_k3s_cidrs:
+  - 10.42.0.0/16
+  - 10.43.0.0/16
