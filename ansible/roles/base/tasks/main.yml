@@ -33,11 +33,24 @@
     name: "{{ base_timezone }}"
 
 # --- Packages -------------------------------------------------------------
+# Repairs a dpkg run that was interrupted (power loss mid-upgrade).
+- name: Check for interrupted dpkg runs
+  ansible.builtin.command: dpkg --audit
+  register: base_dpkg_audit
+  changed_when: false
+
+- name: Finish interrupted dpkg runs
+  ansible.builtin.command: dpkg --configure -a
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: base_dpkg_audit.stdout | length > 0
+
 - name: Full upgrade
   ansible.builtin.apt:
     update_cache: true
     upgrade: full
     autoremove: true
+    lock_timeout: 600   # wait for unattended-upgrades if it is mid-run
   register: base_upgrade
 
 - name: Base packages
