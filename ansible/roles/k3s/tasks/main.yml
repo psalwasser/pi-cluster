@@ -34,6 +34,7 @@
     url: "{{ k3s_install_script_url }}"
     dest: /usr/local/sbin/k3s-install.sh
     mode: "0755"
+    checksum: "sha256:{{ k3s_install_script_sha256 }}"
 
 - name: Install or upgrade k3s to the pinned version
   ansible.builtin.command: /usr/local/sbin/k3s-install.sh server

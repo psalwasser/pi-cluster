@@ -4,6 +4,9 @@ lan_cidr: 10.0.0.0/24
 
 # Pinned k3s version (one minor behind stable, to practise upgrades).
 k3s_version: v1.36.6+k3s1
+# sha256 of install.sh at that tag. Update together with k3s_version:
+#   curl -sfL https://raw.githubusercontent.com/k3s-io/k3s/<version>/install.sh | sha256sum
+k3s_install_script_sha256: 46177d4c99440b4c0311b67233823a8e8a2fc09693f6c89af1a7161e152fbfad
 
 # First k3s server: runs --cluster-init, others join it.
 k3s_bootstrap_host: pi1
