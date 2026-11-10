@@ -1,0 +1,20 @@
+# Applies deploy/pi from the private repo: namespace phil-o-stat with
+# InfluxDB 2, Home Assistant (hostNetwork, for HomeKit on the LAN), Grafana,
+# and two CronJobs (propane sync + furnace/propane model).
+# The namespace and the data PVCs carry kustomize.toolkit.fluxcd.io/prune:
+# disabled, so removing this app from git does NOT delete the data.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: phil-o-stat
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 15m          # first image pulls on the Pis are slow (HA image is ~1.5 GB)
+  path: ./deploy/pi
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: phil-o-stat
