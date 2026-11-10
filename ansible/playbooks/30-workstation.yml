@@ -1,0 +1,67 @@
+# Phase 3: kubectl access from this workstation.
+# Pulls the admin kubeconfig from the bootstrap server, points it at the node's
+# LAN IP, and merges it into ~/.kube/config as context "home".
+# Existing contexts and the current context are left as they are.
+#   ansible-playbook playbooks/30-workstation.yml
+- name: Fetch kubeconfig
+  hosts: "{{ k3s_bootstrap_host | default('pi1') }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read k3s admin kubeconfig
+      ansible.builtin.slurp:
+        src: /etc/rancher/k3s/k3s.yaml
+      register: k3s_kubeconfig_raw
+      no_log: true
+
+- name: Merge into workstation kubeconfig
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kube_context: home
+    kube_dir: "{{ lookup('env', 'HOME') }}/.kube"
+    kube_api_server: "https://{{ hostvars[k3s_bootstrap_host].ansible_host }}:6443"
+    k3s_kc: "{{ hostvars[k3s_bootstrap_host].k3s_kubeconfig_raw.content | b64decode | from_yaml }}"
+  tasks:
+    - name: ~/.kube directory
+      ansible.builtin.file:
+        path: "{{ kube_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write standalone home kubeconfig (no current-context, so merging never switches context)
+      ansible.builtin.template:
+        src: ../templates/home-kubeconfig.yaml.j2
+        dest: "{{ kube_dir }}/home.yaml"
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Build merged config (home.yaml listed first so fresh credentials win)
+      ansible.builtin.command: kubectl config view --flatten
+      environment:
+        KUBECONFIG: "{{ kube_dir }}/home.yaml:{{ kube_dir }}/config"
+      register: kube_merged
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Write merged ~/.kube/config (timestamped backup if it changes)
+      ansible.builtin.copy:
+        content: "{{ kube_merged.stdout }}\n"
+        dest: "{{ kube_dir }}/config"
+        mode: "0600"
+        backup: true
+      no_log: true
+      diff: false
+
+    - name: Verify access
+      ansible.builtin.command: kubectl --context {{ kube_context }} get nodes
+      register: kube_nodes
+      changed_when: false
+      check_mode: false
+
+    - name: Nodes
+      ansible.builtin.debug:
+        var: kube_nodes.stdout_lines
