@@ -38,6 +38,7 @@
   ansible.builtin.command: dpkg --audit
   register: base_dpkg_audit
   changed_when: false
+  check_mode: false   # read-only, safe to run in --check
 
 - name: Finish interrupted dpkg runs
   ansible.builtin.command: dpkg --configure -a
@@ -64,6 +65,7 @@
     name: chrony
     state: started
     enabled: true
+  ignore_errors: "{{ ansible_check_mode }}"   # not installed yet during --check
 
 # --- Wi-Fi power saving off (causes latency spikes that upset etcd) --------
 - name: Wi-Fi power-save off service
@@ -91,6 +93,7 @@
     enabled: true
     state: "{{ 'restarted' if base_wifi_unit.changed else 'started' }}"
     daemon_reload: "{{ base_wifi_unit.changed }}"
+  ignore_errors: "{{ ansible_check_mode }}"   # unit/iw not present yet during --check
 
 # --- Unattended upgrades (security, non-kernel, no auto reboot) ------------
 - name: Unattended-upgrades policy
@@ -122,6 +125,7 @@
   delegate_to: localhost
   become: false
   changed_when: false
+  check_mode: false   # read-only
 
 - name: Key-only SSH (01- sorts before cloud-init's 50- file, first value wins)
   ansible.builtin.copy:
@@ -140,6 +144,7 @@
   ansible.builtin.command: ufw status
   register: base_ufw_status
   changed_when: false
+  check_mode: false   # read-only
 
 - name: Firewall rules
   when: "'Status: active' in base_ufw_status.stdout"

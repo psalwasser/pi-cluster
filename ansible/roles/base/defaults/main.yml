@@ -8,7 +8,7 @@ base_packages:
   - jq
 # Packages unattended-upgrades must never touch (kernel is patched manually, one node at a time).
 base_unattended_blacklist:
-  - "linux-"
+  - "^linux-"
 # Firewall: only managed if ufw is already active (we never enable it).
 base_ufw_node_ports:
   - { port: "6443", proto: tcp }       # Kubernetes API
