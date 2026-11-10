@@ -21,6 +21,7 @@
     dest: /etc/rancher/k3s/config.yaml
     mode: "0600"
   register: k3s_config
+  diff: false   # contains the join token on joining servers
 
 - name: Installed k3s version
   ansible.builtin.shell: "/usr/local/bin/k3s --version 2>/dev/null | head -1 | awk '{print $3}'"
