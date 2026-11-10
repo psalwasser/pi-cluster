@@ -127,17 +127,35 @@
   changed_when: false
   check_mode: false   # read-only
 
-- name: Key-only SSH (01- sorts before cloud-init's 50- file, first value wins)
-  ansible.builtin.copy:
-    dest: /etc/ssh/sshd_config.d/01-pi-cluster.conf
-    mode: "0644"
-    content: |
-      # Managed by Ansible (pi-cluster base role)
-      PasswordAuthentication no
-      KbdInteractiveAuthentication no
-      PermitRootLogin no
-    validate: /usr/sbin/sshd -t -f /etc/ssh/sshd_config
-  notify: Reload ssh
+# A drop-in can't be validated on its own, so write it, test the full
+# config, and remove it again if the test fails.
+- name: Key-only SSH
+  block:
+    - name: Key-only SSH drop-in (01- sorts before cloud-init's 50- file, first value wins)
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/01-pi-cluster.conf
+        mode: "0644"
+        content: |
+          # Managed by Ansible (pi-cluster base role)
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+      register: base_sshd_dropin
+      notify: Reload ssh
+
+    - name: Test full sshd config
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+      when: base_sshd_dropin.changed
+  rescue:
+    - name: Remove drop-in after failed test
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/01-pi-cluster.conf
+        state: absent
+
+    - name: Stop
+      ansible.builtin.fail:
+        msg: "sshd config test failed; drop-in removed, ssh unchanged"
 
 # --- Firewall (only if ufw is already active) ------------------------------
 - name: Check ufw status
