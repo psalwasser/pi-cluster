@@ -1,0 +1,40 @@
+# Phase 5: install Flux from the pinned manifests in this repo.
+# Two steps so Flux's CRDs exist before the GitRepository/Kustomization that use them.
+# After this, Flux applies everything under manifests/clusters/home from GitHub.
+#   ansible-playbook playbooks/50-flux.yml
+- name: Install Flux
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kube_context: home
+    flux_dir: "{{ playbook_dir }}/../../manifests/clusters/home/flux-system"
+  tasks:
+    - name: Flux controllers and CRDs
+      ansible.builtin.command: kubectl --context {{ kube_context }} apply --server-side -f {{ flux_dir }}/gotk-components.yaml
+      register: flux_components
+      changed_when: "'serverside-applied' in flux_components.stdout and 'unchanged' not in flux_components.stdout"
+
+    - name: Wait for CRDs and controllers
+      ansible.builtin.shell: |
+        kubectl --context {{ kube_context }} wait --for=condition=Established crd --all --timeout=120s >/dev/null
+        kubectl --context {{ kube_context }} -n flux-system wait --for=condition=Available deploy --all --timeout=300s
+      changed_when: false
+
+    - name: Point Flux at this repo
+      ansible.builtin.command: kubectl --context {{ kube_context }} apply -k {{ flux_dir }}
+      register: flux_sync
+      changed_when: "'created' in flux_sync.stdout or 'configured' in flux_sync.stdout"
+
+    - name: Wait for first reconcile
+      ansible.builtin.command: flux --context {{ kube_context }} reconcile kustomization flux-system --with-source
+      changed_when: false
+
+    - name: Status
+      ansible.builtin.command: flux --context {{ kube_context }} get kustomizations -A
+      register: flux_status
+      changed_when: false
+
+    - name: Show status
+      ansible.builtin.debug:
+        var: flux_status.stdout_lines
