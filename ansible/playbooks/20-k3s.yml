@@ -1,0 +1,11 @@
+# Phase 2: k3s HA (embedded etcd). One server at a time, bootstrap first.
+#   ansible-playbook playbooks/20-k3s.yml --limit pi1
+#   ansible-playbook playbooks/20-k3s.yml --limit pi2
+#   ansible-playbook playbooks/20-k3s.yml --limit pi3
+- name: k3s servers
+  hosts: k3s_servers
+  become: true
+  serial: 1
+  order: inventory
+  roles:
+    - k3s

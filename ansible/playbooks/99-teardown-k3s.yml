@@ -1,0 +1,30 @@
+# DESTRUCTIVE: removes k3s and ALL cluster data (etcd, volumes) from the nodes.
+# The OS and base role settings are kept, so 20-k3s.yml can rebuild the cluster.
+#   ansible-playbook playbooks/99-teardown-k3s.yml -e confirm_teardown=yes
+- name: Tear down k3s
+  hosts: k3s_servers
+  become: true
+  tasks:
+    - name: Require explicit confirmation
+      ansible.builtin.assert:
+        that: confirm_teardown | default('no') == 'yes'
+        fail_msg: "Refusing to tear down. Rerun with -e confirm_teardown=yes"
+      run_once: true
+
+    - name: Run k3s uninstall script
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      args:
+        removes: /usr/local/bin/k3s-uninstall.sh
+
+    - name: Remove leftover config
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: absent
+
+    - name: Remove workstation copy of the old join token
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.config/pi-cluster/k3s-token"
+        state: absent
+      delegate_to: localhost
+      become: false
+      run_once: true

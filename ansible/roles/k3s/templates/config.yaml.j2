@@ -1,0 +1,16 @@
+# Managed by Ansible (pi-cluster k3s role)
+{% if inventory_hostname == k3s_bootstrap_host %}
+cluster-init: true
+{% else %}
+server: "{{ k3s_api_endpoint }}"
+token: "{{ k3s_join_token }}"
+{% endif %}
+node-ip: "{{ ansible_host }}"
+flannel-iface: "{{ k3s_iface }}"
+tls-san:
+{% for san in k3s_tls_san %}
+  - "{{ san }}"
+{% endfor %}
+etcd-arg:
+  - "heartbeat-interval={{ k3s_etcd_heartbeat_ms }}"
+  - "election-timeout={{ k3s_etcd_election_ms }}"

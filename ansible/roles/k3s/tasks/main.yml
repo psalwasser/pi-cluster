@@ -1,0 +1,105 @@
+- name: Is this the bootstrap server?
+  ansible.builtin.set_fact:
+    k3s_is_bootstrap: "{{ inventory_hostname == k3s_bootstrap_host }}"
+
+# Joining servers read the token from the workstation (fetched from the bootstrap server).
+- name: Read join token from the workstation
+  ansible.builtin.set_fact:
+    k3s_join_token: "{{ lookup('file', k3s_token_file) }}"
+  no_log: true
+  when: not k3s_is_bootstrap
+
+- name: Config directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: "0755"
+
+- name: k3s config (0600, holds the join token on joining servers)
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    mode: "0600"
+  register: k3s_config
+
+- name: Installed k3s version
+  ansible.builtin.shell: "/usr/local/bin/k3s --version 2>/dev/null | head -1 | awk '{print $3}'"
+  register: k3s_installed
+  changed_when: false
+  check_mode: false
+
+- name: Download pinned install script
+  ansible.builtin.get_url:
+    url: "{{ k3s_install_script_url }}"
+    dest: /usr/local/sbin/k3s-install.sh
+    mode: "0755"
+
+- name: Install or upgrade k3s to the pinned version
+  ansible.builtin.command: /usr/local/sbin/k3s-install.sh server
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+  when: k3s_installed.stdout != k3s_version
+  register: k3s_install
+
+- name: Restart k3s if config changed on an existing install
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  when: k3s_config.changed and k3s_install is skipped and k3s_installed.stdout | length > 0
+
+- name: Ensure k3s is enabled and running
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+  when: not ansible_check_mode or k3s_installed.stdout | length > 0
+
+- name: Wait for this node to be Ready
+  ansible.builtin.command: >-
+    /usr/local/bin/k3s kubectl wait --for=condition=Ready
+    node/{{ inventory_hostname }} --timeout=300s
+  register: k3s_wait
+  retries: 10
+  delay: 15
+  until: k3s_wait.rc == 0
+  changed_when: false
+  when: not ansible_check_mode
+
+# Bootstrap server: save the join token on the workstation, never in git.
+- name: Fetch join token from bootstrap server
+  when: k3s_is_bootstrap and not ansible_check_mode
+  block:
+    - name: Read token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/token
+      register: k3s_token_raw
+      no_log: true
+
+    - name: Secrets directory on the workstation
+      ansible.builtin.file:
+        path: "{{ k3s_secrets_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Write token on the workstation (0600)
+      ansible.builtin.copy:
+        content: "{{ k3s_token_raw.content | b64decode | trim }}"
+        dest: "{{ k3s_token_file }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+- name: k3s check-config
+  ansible.builtin.shell: /usr/local/bin/k3s check-config 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
+  register: k3s_check
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: check-config summary
+  ansible.builtin.debug:
+    msg: "{{ k3s_check.stdout_lines | select('search', 'STATUS|missing|fail|Error') | list }}"
+  when: not ansible_check_mode
