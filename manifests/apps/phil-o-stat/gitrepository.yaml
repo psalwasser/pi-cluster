@@ -1,0 +1,20 @@
+# The app's manifests live in a PRIVATE repo (household details stay out of
+# this public one). Flux reads it with a read-only deploy key stored in the
+# Secret flux-system/phil-o-stat-auth (created by hand; never in git).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: phil-o-stat
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: ssh://git@github.com/psalwasser/phil-o-stat-historian
+  ref:
+    branch: main
+  secretRef:
+    name: phil-o-stat-auth
+  # Only what the cluster needs (deploy/pi pulls in k8s/)
+  ignore: |
+    /*
+    !/deploy/
+    !/k8s/
