@@ -1,0 +1,27 @@
+# Phase 4: off-cluster etcd snapshot backups, pulled by the backup host.
+#   ansible-playbook playbooks/40-backup.yml
+- name: Backup host key
+  hosts: backup_targets
+  gather_facts: false
+  tasks:
+    - name: Dedicated backup SSH key on the backup host
+      community.crypto.openssh_keypair:
+        path: ~/.ssh/pi-cluster-backup
+        type: ed25519
+        comment: "pi-cluster-backup@{{ inventory_hostname }}"
+      register: backup_keypair
+
+- name: Backup source on each k3s server
+  hosts: k3s_servers
+  become: true
+  serial: 1
+  vars:
+    backup_pubkey: "{{ hostvars[groups['backup_targets'][0]].backup_keypair.public_key }}"
+  roles:
+    - backup_source
+
+- name: Backup pull job on the backup host
+  hosts: backup_targets
+  gather_facts: false
+  roles:
+    - backup_target

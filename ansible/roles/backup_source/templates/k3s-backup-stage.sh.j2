@@ -1,0 +1,10 @@
+#!/bin/sh
+# Managed by Ansible. Copies etcd snapshots + server token into the
+# backup user's outbox, where the backup host pulls them (read-only rsync).
+set -eu
+OUT={{ backup_outbox }}
+install -d -m 0700 -o {{ backup_user }} -g {{ backup_user }} "$OUT" "$OUT/snapshots"
+rsync -a --delete "{{ k3s_snapshot_dir }}/" "$OUT/snapshots/"
+install -m 0600 -o {{ backup_user }} -g {{ backup_user }} "{{ k3s_server_token }}" "$OUT/token"
+chown -R {{ backup_user }}:{{ backup_user }} "$OUT"
+chmod -R go-rwx "$OUT"

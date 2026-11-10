@@ -1,0 +1,19 @@
+#!/bin/sh
+# Managed by Ansible (pi-cluster). Pulls etcd snapshots + server token from
+# every k3s server into {{ backup_dir }}/<node>/. Keeps {{ backup_retention_days }} days.
+set -u
+DEST={{ backup_dir }}
+KEY={{ backup_key }}
+rc=0
+{% for h in backup_sources %}
+mkdir -p "$DEST/{{ h }}" && chmod 700 "$DEST" "$DEST/{{ h }}"
+if rsync -a -e "ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=10" \
+     k3sbackup@{{ hostvars[h].ansible_host }}: "$DEST/{{ h }}/"; then
+  echo "{{ h }}: ok"
+else
+  echo "{{ h }}: FAILED" >&2; rc=1
+fi
+{% endfor %}
+find "$DEST" -path '*/snapshots/*' -type f -mtime +{{ backup_retention_days }} -delete
+date -Is > "$DEST/last-run"
+exit $rc

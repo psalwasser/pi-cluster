@@ -1,0 +1,65 @@
+- name: Backup directory
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Trust the k3s nodes' SSH host keys (copied from the workstation's known_hosts)
+  ansible.builtin.known_hosts:
+    name: "{{ hostvars[item].ansible_host }}"
+    key: "{{ lookup('pipe', 'ssh-keygen -F ' ~ hostvars[item].ansible_host ~ ' | grep -v \"^#\" | grep ssh-ed25519') }}"
+    path: ~/.ssh/known_hosts
+  loop: "{{ backup_sources }}"
+
+- name: ~/.local/bin
+  ansible.builtin.file:
+    path: ~/.local/bin
+    state: directory
+    mode: "0755"
+
+- name: Pull script
+  ansible.builtin.template:
+    src: pi-cluster-backup.sh.j2
+    dest: ~/.local/bin/pi-cluster-backup
+    mode: "0755"
+
+- name: User systemd directory
+  ansible.builtin.file:
+    path: ~/.config/systemd/user
+    state: directory
+    mode: "0755"
+
+- name: Pull service and timer
+  ansible.builtin.copy:
+    dest: "~/.config/systemd/user/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: pi-cluster-backup.service
+      content: |
+        [Unit]
+        Description=Pull k3s etcd snapshots from the pi-cluster
+        [Service]
+        Type=oneshot
+        ExecStart=%h/.local/bin/pi-cluster-backup
+    - name: pi-cluster-backup.timer
+      content: |
+        [Unit]
+        Description=Pull pi-cluster etcd snapshots every 6 hours
+        [Timer]
+        OnCalendar=00/6:15
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: backup_target_units
+
+- name: Enable pull timer (runs while the user is logged in; linger is off)
+  ansible.builtin.systemd:
+    name: pi-cluster-backup.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: "{{ backup_target_units.changed }}"
+  ignore_errors: "{{ ansible_check_mode }}"

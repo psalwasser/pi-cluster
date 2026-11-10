@@ -1,0 +1,64 @@
+# Read-only backup source: a no-sudo user whose SSH key can only rsync-read its outbox.
+- name: Backup user (no password, no sudo)
+  ansible.builtin.user:
+    name: "{{ backup_user }}"
+    shell: /bin/sh            # needed for the forced rrsync command
+    password: "!"
+    create_home: true
+    system: true
+
+- name: Backup user's home is private
+  ansible.builtin.file:
+    path: "/home/{{ backup_user }}"
+    state: directory
+    owner: "{{ backup_user }}"
+    mode: "0700"
+  ignore_errors: "{{ ansible_check_mode }}"   # user doesn't exist yet during --check
+
+- name: Staging script
+  ansible.builtin.template:
+    src: k3s-backup-stage.sh.j2
+    dest: /usr/local/sbin/k3s-backup-stage.sh
+    mode: "0755"
+
+- name: Staging service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: k3s-backup-stage.service
+      content: |
+        [Unit]
+        Description=Stage k3s etcd snapshots for off-node backup
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/k3s-backup-stage.sh
+    - name: k3s-backup-stage.timer
+      content: |
+        [Unit]
+        Description=Stage k3s etcd snapshots hourly
+        [Timer]
+        OnCalendar=hourly
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: backup_units
+
+- name: Enable staging timer
+  ansible.builtin.systemd:
+    name: k3s-backup-stage.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ backup_units.changed }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Backup host key, restricted to read-only rsync of the outbox
+  ansible.posix.authorized_key:
+    user: "{{ backup_user }}"
+    key: "{{ backup_pubkey }}"
+    key_options: 'command="/usr/bin/rrsync -ro {{ backup_outbox }}",restrict'
+    exclusive: true
+  ignore_errors: "{{ ansible_check_mode }}"   # user and key don't exist yet during --check
